@@ -35,24 +35,28 @@ jobs:
           az deployment group create \
             --name logicapp-alerting-${{ github.run_number }} \
             --resource-group rg-order-logic-northeurope \
-            --template-file ./infra/logicapp.bicep
+            --template-file ./infra/logicapp.bicep \
+            --parameters \
+              appInsightsIKey='${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}' \
+              appInsightsKey='${{ secrets.APPINSIGHTS_API_KEY }}' \
+              healthCheckUrl='${{ secrets.HEALTHCHECK_URL }}'
 
 
-          az deployment group create \
-            --name logicapp-alerting-${{ github.run_number }} \
-            --resource-group rg-order-logic-northeurope \
-            --template-file ./infra/logicapp.bicep
+                az deployment group create \
+                  --name logicapp-alerting-${{ github.run_number }} \
+                  --resource-group rg-order-logic-northeurope \
+                  --template-file ./infra/logicapp.bicep
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '8.0.x'
+            - name: Setup .NET
+              uses: actions/setup-dotnet@v3
+              with:
+                dotnet-version: '8.0.x'
 
-      - name: Restore dependencies
-        run: dotnet restore ./Azure-Healthcheck
+            - name: Restore dependencies
+              run: dotnet restore ./Azure-Healthcheck
 
-      - name: Build project
-        run: dotnet build ./Azure-Healthcheck --configuration Release
+            - name: Build project
+              run: dotnet build ./Azure-Healthcheck --configuration Release
 
       - name: Publish Function App
         run: dotnet publish ./Azure-Healthcheck --configuration Release --output ./publish
