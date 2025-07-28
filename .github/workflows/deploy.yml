@@ -33,9 +33,10 @@ jobs:
       - name: Deploy Bicep template
         run: |
           az deployment group create \
-            --name logicapp-deploy-${{ github.run_number }} \
+            --name logicapp-alerting-${{ github.run_number }} \
             --resource-group rg-order-logic-northeurope \
-            --template-file ./infra/check.bicep
+            --template-file ./infra/logicapp.bicep
+
 
           az deployment group create \
             --name logicapp-alerting-${{ github.run_number }} \
