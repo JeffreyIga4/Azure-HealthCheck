@@ -1,4 +1,4 @@
-name: Deploy Azure Function App & Infra
+name: Deploy Azure Function App & Logic App
 
 on:
   push:
@@ -18,45 +18,34 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Check Function App Status
-        run: |
-          az functionapp show \
-            --name healthcheckfunc-jiga \
-            --resource-group rg-order-logic-northeurope
-
+      # Optional: Restart the Function App to ensure it's not in read-only mode
       - name: Restart Function App
         run: |
           az functionapp restart \
             --name healthcheckfunc-jiga \
             --resource-group rg-order-logic-northeurope
 
-      - name: Deploy Bicep template
+      - name: Deploy Logic App (Alerting)
         run: |
           az deployment group create \
             --name logicapp-alerting-${{ github.run_number }} \
             --resource-group rg-order-logic-northeurope \
             --template-file ./infra/logicapp.bicep \
             --parameters \
+              healthCheckUrl='${{ secrets.HEALTHCHECK_URL }}' \
               appInsightsIKey='${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}' \
-              appInsightsKey='${{ secrets.APPINSIGHTS_API_KEY }}' \
-              healthCheckUrl='${{ secrets.HEALTHCHECK_URL }}'
+              appInsightsKey='${{ secrets.APPINSIGHTS_API_KEY }}'
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
 
-                az deployment group create \
-                  --name logicapp-alerting-${{ github.run_number }} \
-                  --resource-group rg-order-logic-northeurope \
-                  --template-file ./infra/logicapp.bicep
+      - name: Restore dependencies
+        run: dotnet restore ./Azure-Healthcheck
 
-            - name: Setup .NET
-              uses: actions/setup-dotnet@v3
-              with:
-                dotnet-version: '8.0.x'
-
-            - name: Restore dependencies
-              run: dotnet restore ./Azure-Healthcheck
-
-            - name: Build project
-              run: dotnet build ./Azure-Healthcheck --configuration Release
+      - name: Build project
+        run: dotnet build ./Azure-Healthcheck --configuration Release
 
       - name: Publish Function App
         run: dotnet publish ./Azure-Healthcheck --configuration Release --output ./publish
