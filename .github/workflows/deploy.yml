@@ -43,13 +43,13 @@ jobs:
 
 
       - name: Restore dependencies
-        run: dotnet restore ./Azure-Healthcheck
+        run: dotnet restore Azure-Healthcheck.csproj
 
       - name: Build project
-        run: dotnet build ./Azure-Healthcheck --configuration Release
+        run: dotnet build Azure-Healthcheck.csproj --configuration Release
 
       - name: Publish Function App
-        run: dotnet publish ./Azure-Healthcheck --configuration Release --output ./publish
+        run: dotnet publish Azure-Healthcheck.csproj --configuration Release --output ./publish
 
       - name: Deploy Azure Function
         uses: Azure/functions-action@v1
