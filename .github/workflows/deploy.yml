@@ -18,6 +18,18 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Check Function App Status
+        run: |
+          az functionapp show \
+            --name healthcheckfunc-jiga \
+            --resource-group rg-order-logic-northeurope
+
+      - name: Restart Function App
+        run: |
+          az functionapp restart \
+            --name healthcheckfunc-jiga \
+            --resource-group rg-order-logic-northeurope
+
       - name: Deploy Bicep template
         run: |
           az deployment group create \
