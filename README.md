@@ -4,6 +4,28 @@ This project implements an automated **health check system** for monitoring an A
 
 ---
 
+
+## Features
+
+- **Health Check API**: A .NET Azure Function (`HealthCheckPing`) that returns a `200 OK` status and `{ "status": "Healthy" }` when running properly.
+- **Logic App Monitor**: A Logic App that runs **every 5 minutes** to check the health of the Function App by sending an HTTP GET request to the health check endpoint.
+- **Alerting**: If the health check fails, the Logic App sends a **custom event** to **Application Insights** for logging and alerting.
+- **Infrastructure-as-Code**: Uses Bicep files (`logicapp.bicep`) to deploy the Function App and Logic App resources.
+- **CI/CD Pipeline**: GitHub Actions workflow automates deployment on push to the `main` branch.
+
+---
+
+## Deployment Flow
+
+The GitHub Actions workflow:
+
+- Deploys infrastructure (`logicapp.bicep` for the Logic App)
+- Builds and publishes the .NET Function
+- Automatically restarts the Function App before deployment to avoid read-only state
+- Pushes the compiled Function App code to Azure
+
+---
+
 ## Project Structure
 
 ```
@@ -28,49 +50,81 @@ Azure-HealthCheck/
 
 ---
 
-## What It Does
-
-- Deploys a .NET 8 Azure Function (`HealthCheckPing`) that returns `{"status": "Healthy"}`.
-- A **scheduled Logic App** pings the Function URL at regular intervals.
-- If the check fails, it triggers an alert by sending a **custom event to Application Insights**.
-
----
-
 ## How to Deploy
 
-### 1. **Setup GitHub Secrets**
+### Prerequisites
+- Azure Subscription
+- Azure CLI installed and logged in
+- GitHub repository with the following secrets:
+  - `AZURE_CREDENTIALS` – output from az ad sp create-for-rbac with contributor permissions
+  - `APPINSIGHTS_KEY` - App Insights API key
+  - `APPINSIGHTS_IKEY` - App Insights instrumentation key
+  - `HEALTHCHECK_URL` -  Full Function URL (with `code=...`)  
 
-| Secret Name              | Description                                     |
-|--------------------------|-------------------------------------------------|
-| `AZURE_CREDENTIALS`      | JSON of your Azure service principal            |
-| `APPINSIGHTS_KEY`        | App Insights API key                            |
-| `APPINSIGHTS_IKEY`       | App Insights instrumentation key                |
-| `HEALTHCHECK_URL`        | Full Function URL (with `code=...`)             |
+### Deployment Steps
+1. **Push to main Branch**
+When you push to the `main` branch, the `deploy.yml` GitHub Actions workflow will automatically:
+- Restart the Function App to clear read-only locks
+- Deploy infrastructure using Bicep:
+  - `logicapp.bicep`: for the Logic App and alert configuration
+- Build and publish the .NET Function App to Azure
 
-### 2. **Push to `main`**
+2. **GitHub Actions Will Do the Following:**
+``` yaml
+az deployment group create \
+            --name logicapp-alerting-${{ github.run_number }} \
+            --resource-group rg-order-logic-northeurope \
+            --template-file ./infra/logicapp.bicep \
+            --parameters \
+              healthCheckUrl='${{ secrets.HEALTHCHECK_URL }}' \
+              appInsightsIKey='${{ secrets.APPINSIGHTS_INSTRUMENTATION_KEY }}' \
+              appInsightsKey='${{ secrets.APPINSIGHTS_API_KEY }}'
 
-This triggers the GitHub Actions workflow:
-- Deploys infrastructure via Bicep
-- Publishes and deploys the Function App
-- Creates the Logic App scheduler
-- Connects monitoring to Application Insights
+
+- name: Publish Function App
+  run: dotnet publish Azure-Healthcheck.csproj --configuration Release --output ./publish
+
+- name: Deploy Azure Function
+  uses: Azure/functions-action@v1
+  with:
+    app-name: healthcheckfunc-jiga
+    package: ./publish
+```
 
 ---
 
 ## 📡 Monitoring & Alerting
 
-If the Function returns anything other than `200 OK`:
-- The Logic App sends a custom `HealthCheckFailure` event to Application Insights.
-- Includes:
-  - `message`
-  - `statusCode`
-  - `timestamp`
-  - `source`
+1. The **Logic App runs every 5 minutes** (`Recurrence` trigger).
+2. It sends a `GET` request to the deployed `HealthCheckPing` Azure Function.
+3. If the response status is not `200`, it sends a custom Application Insights event:
 
+```json
+{
+  "name": "Microsoft.ApplicationInsights.Event",
+  "time": "@{utcNow()}",
+  "iKey": "<your-app-insights-key>",
+  "data": {
+    "baseType": "EventData",
+    "baseData": {
+      "ver": 2,
+      "name": "HealthCheckFailure",
+      "properties": {
+        "message": "Health check failed: @{outputs('Compose_1')}",
+        "code": "@{body('HTTP')?['StatusCode']}",
+        "source": "LogicApp",
+        "timestamp": "@{utcNow()}"
+      }
+    }
+  }
+}
+```
 
 ---
 
 ## Health Check Function
+
+The health check function is a simple HTTP-triggered Azure Function named `HealthCheckPing`. It's written in C# using the **.NET isolated process model**, providing better scalability and separation from the Azure Functions runtime.
 
 ```csharp
 public class HealthCheckPing
